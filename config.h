@@ -8,7 +8,7 @@
 #define DISABLE_BROWSER 1
 
 /* Define this to disable the help text display. */
-#define DISABLE_HELP 1
+#undef DISABLE_HELP
 
 /* Define this to disable the justify routines. */
 #define DISABLE_JUSTIFY 1
@@ -38,7 +38,7 @@
 #define ENABLE_COLOR 1
 
 /* Define this to enable multiple file buffers. */
-/* #undef ENABLE_MULTIBUFFER */
+#define ENABLE_MULTIBUFFER 1
 
 /* Define this to use .nanorc files. */
 #define ENABLE_NANORC 1
@@ -189,10 +189,10 @@
 /* #undef HAVE_WCWIDTH */
 
 /* Define this to enable extra stuff. */
-/* #undef NANO_EXTRA */
+#define NANO_EXTRA 1
 
 /* Define this to make the nano executable as small as possible. */
-#define NANO_TINY 1
+#undef NANO_TINY
 
 /* Shut up assert warnings :-) */
 #define NDEBUG 1
