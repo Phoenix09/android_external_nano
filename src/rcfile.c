@@ -1,4 +1,4 @@
-/* $Id: rcfile.c 5412 2015-11-15 06:43:54Z astyanax $ */
+/* $Id: rcfile.c 5349 2015-08-09 16:31:01Z bens $ */
 /**************************************************************************
  *   rcfile.c                                                             *
  *                                                                        *
@@ -38,7 +38,8 @@ static const rcoption rcopts[] = {
 #ifndef DISABLE_JUSTIFY
     {"brackets", 0},
 #endif
-    {"const", CONST_UPDATE},
+    {"const", CONST_UPDATE},  /* deprecated form, remove in 2018 */
+    {"constantshow", CONST_UPDATE},
 #ifndef DISABLE_WRAPJUSTIFY
     {"fill", 0},
 #endif
@@ -62,7 +63,8 @@ static const rcoption rcopts[] = {
     {"operatingdir", 0},
 #endif
 #ifndef DISABLE_HISTORIES
-    {"poslog", POS_HISTORY},
+    {"poslog", POS_HISTORY},  /* deprecated form, remove in 2018 */
+    {"positionlog", POS_HISTORY},
 #endif
     {"preserve", PRESERVE},
 #ifndef DISABLE_JUSTIFY
@@ -98,6 +100,7 @@ static const rcoption rcopts[] = {
     {"smooth", SMOOTH_SCROLL},
     {"softwrap", SOFTWRAP},
     {"tabstospaces", TABS_TO_SPACES},
+    {"unix", MAKE_IT_UNIX},
     {"whitespace", 0},
     {"wordbounds", WORD_BOUNDS},
 #endif
@@ -442,7 +445,7 @@ void parse_binding(char *ptr, bool dobind)
 
     if (strlen(keycopy) < 2) {
 	rcfile_error(N_("Key name is too short"));
-	return;
+	goto free_copy;
     }
 
     /* Uppercase only the first two or three characters of the key name. */
@@ -453,7 +456,7 @@ void parse_binding(char *ptr, bool dobind)
 	    keycopy[2] = toupper(keycopy[2]);
 	else {
 	    rcfile_error(N_("Key name is too short"));
-	    return;
+	    goto free_copy;
 	}
     }
 
@@ -463,7 +466,7 @@ void parse_binding(char *ptr, bool dobind)
 	keycopy[1] = tolower(keycopy[1]);
     else if (keycopy[0] != '^' && keycopy[0] != 'M' && keycopy[0] != 'F') {
 	rcfile_error(N_("Key name must begin with \"^\", \"M\", or \"F\""));
-	return;
+	goto free_copy;
     }
 
     if (dobind) {
@@ -472,7 +475,7 @@ void parse_binding(char *ptr, bool dobind)
 
 	if (funcptr[0] == '\0') {
 	    rcfile_error(N_("Must specify a function to bind the key to"));
-	    return;
+	    goto free_copy;
 	}
     }
 
@@ -482,21 +485,21 @@ void parse_binding(char *ptr, bool dobind)
     if (menuptr[0] == '\0') {
 	/* TRANSLATORS: Do not translate the word "all". */
 	rcfile_error(N_("Must specify a menu (or \"all\") in which to bind/unbind the key"));
-	return;
+	goto free_copy;
     }
 
     if (dobind) {
 	newsc = strtosc(funcptr);
 	if (newsc == NULL) {
 	    rcfile_error(N_("Cannot map name \"%s\" to a function"), funcptr);
-	    return;
+	    goto free_copy;
 	}
     }
 
     menu = strtomenu(menuptr);
     if (menu < 1) {
 	rcfile_error(N_("Cannot map name \"%s\" to a menu"), menuptr);
-	return;
+	goto free_copy;
     }
 
 #ifdef DEBUG
@@ -529,11 +532,11 @@ void parse_binding(char *ptr, bool dobind)
 	if (!menu) {
 	    rcfile_error(N_("Function '%s' does not exist in menu '%s'"), funcptr, menuptr);
 	    free(newsc);
-	    return;
+	    goto free_copy;
 	}
 
 	newsc->keystr = keycopy;
-	newsc->menu = menu;
+	newsc->menus = menu;
 	newsc->type = strtokeytype(newsc->keystr);
 	assign_keyinfo(newsc);
 #ifdef DEBUG
@@ -544,17 +547,17 @@ void parse_binding(char *ptr, bool dobind)
 	if (check_bad_binding(newsc)) {
 	    rcfile_error(N_("Sorry, keystroke \"%s\" may not be rebound"), newsc->keystr);
 	    free(newsc);
-	    return;
+	    goto free_copy;
 	}
     }
 
     /* Now find and delete any existing same shortcut in the menu(s). */
     for (s = sclist; s != NULL; s = s->next) {
-	if (((s->menu & menu)) && !strcmp(s->keystr, keycopy)) {
+	if ((s->menus & menu) && !strcmp(s->keystr, keycopy)) {
 #ifdef DEBUG
-	    fprintf(stderr, "deleting entry from menu %x\n", s->menu);
+	    fprintf(stderr, "deleting entry from among menus %x\n", s->menus);
 #endif
-	    s->menu &= ~menu;
+	    s->menus &= ~menu;
 	}
     }
 
@@ -569,7 +572,11 @@ void parse_binding(char *ptr, bool dobind)
 	/* Add the new shortcut at the start of the list. */
 	newsc->next = sclist;
 	sclist = newsc;
+	return;
     }
+
+  free_copy:
+    free(keycopy);
 }
 
 

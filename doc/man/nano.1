@@ -1,5 +1,5 @@
 .\" Hey, EMACS: -*- nroff -*-
-.\" $Id: nano.1 5244 2015-06-07 20:14:41Z bens $
+.\" $Id: nano.1 5480 2015-12-05 11:04:24Z bens $
 .\"
 .\" Copyright (C) 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007,
 .\" 2009, 2010, 2013, 2014 Free Software Foundation, Inc.
@@ -20,7 +20,7 @@
 .\"   Documentation License along with this program.  If not, see
 .\"   <http://www.gnu.org/licenses/>.
 .\"
-.TH NANO 1 "version 2.4.2" "June 2015"
+.TH NANO 1 "version 2.5.0" "December 2015"
 .\" Please adjust this date whenever revising the manpage.
 .\"
 
@@ -115,9 +115,9 @@ Disable automatic conversion of files from DOS/Mac format.
 .BR \-O ", " \-\-morespace
 Use the blank line below the titlebar as extra editing space.
 .TP
-.BR \-P ", " \-\-poslog
+.BR \-P ", " \-\-positionlog
 Log and later read back the location of the cursor and place it there
-again.
+again.  (The old form of this option, \fB\-\-poslog\fR, is deprecated.)
 .TP
 .BR "\-Q ""\fIcharacters\fB""" ", " "\-\-quotestr=""" \fIcharacters\fR """
 Set the quoting string for justifying.  The default is
@@ -157,7 +157,7 @@ characters as part of a word.
 Specify the name of the syntax highlighting to use from among the ones
 defined in the \fInanorc\fP files.
 .TP
-.BR \-c ", " \-\-const
+.BR \-c ", " \-\-constantshow
 Constantly show the cursor position.  Note that this overrides \fB\-U\fP.
 .TP
 .BR \-d ", " \-\-rebinddelete
@@ -222,6 +222,11 @@ Use this alternative spell checker command.
 Always save a changed buffer without prompting.  Same as Pico's \fB\-t\fP
 option.
 .TP
+.BR \-u ", " \-\-unix
+Save a file by default in Unix format.  This overrides nano's
+default behavior of saving a file in the format that it had.
+(This option has no effect when you also use \fB\-\-noconvert\fR.)
+.TP
 .BR \-v ", " \-\-view
 View-file (read-only) mode.
 .TP
@@ -270,12 +275,14 @@ it unique.  In multibuffer mode, \fBnano\fP will write all the open
 buffers to their respective emergency files.
 
 .SH BUGS
-Please send any comments or bug reports to \fBnano@nano-editor.org\fP.
-
-The \fBnano\fP mailing list is available from \fBnano-devel@gnu.org\fP.
-
-To subscribe, email to \fBnano-devel-request@gnu.org\fP with a subject
-of "subscribe".
+Justifications (\fB^J\fR) and reindentations (\fBM-{\fR and \fBM-}\fR)
+are not yet covered by the general undo system.  So after a justification
+that is not immediately undone, or after any reindentation, earlier edits
+cannot be undone any more.  The workaround is, of course, to exit without
+saving.
+.sp
+Please report any other bugs that you encounter via
+https://savannah.gnu.org/bugs/?group=nano.
 
 .SH HOMEPAGE
 http://www.nano-editor.org/

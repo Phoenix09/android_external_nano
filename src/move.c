@@ -1,4 +1,4 @@
-/* $Id: move.c 5207 2015-04-20 08:16:41Z bens $ */
+/* $Id: move.c 5374 2015-10-27 16:57:32Z bens $ */
 /**************************************************************************
  *   move.c                                                               *
  *                                                                        *
@@ -52,9 +52,8 @@ void do_page_up(void)
 {
     int i, skipped = 0;
 
-    /* If there's less than a page of text left on the screen, put the
-     * cursor at the beginning of the first line of the file, and then
-     * update the edit window. */
+    /* If the cursor is less than a page away from the top of the file,
+     * put it at the beginning of the first line. */
     if (openfile->current->lineno == 1 || (
 #ifndef NANO_TINY
 	!ISSET(SOFTWRAP) &&
@@ -106,9 +105,8 @@ void do_page_down(void)
 {
     int i;
 
-    /* If there's less than a page of text left on the screen, put the
-     * cursor at the beginning of the last line of the file, and then
-     * update the edit window. */
+    /* If the cursor is less than a page away from the bottom of the file,
+     * put it at the end of the last line. */
     if (openfile->current->lineno + maxrows - 2 >=
 	openfile->filebot->lineno) {
 	do_last_line();
@@ -225,74 +223,36 @@ bool do_next_word(bool allow_punct, bool allow_update)
 {
     size_t pww_save = openfile->placewewant;
     filestruct *current_save = openfile->current;
-    char *char_mb;
-    int char_mb_len;
-    bool end_line = FALSE, started_on_word = FALSE;
+    bool started_on_word = is_word_mbchar(openfile->current->data +
+				openfile->current_x, allow_punct);
+    bool seen_space = !started_on_word;
 
     assert(openfile->current != NULL && openfile->current->data != NULL);
 
-    char_mb = charalloc(mb_cur_max());
-
-    /* Move forward until we find the character after the last letter of
-     * the current word. */
-    while (!end_line) {
-	char_mb_len = parse_mbchar(openfile->current->data +
-		openfile->current_x, char_mb, NULL);
-
-	/* If we've found it, stop moving forward through the current
-	 * line. */
-	if (!is_word_mbchar(char_mb, allow_punct))
-	    break;
-
-	/* If we haven't found it, then we've started on a word, so set
-	 * started_on_word to TRUE. */
-	started_on_word = TRUE;
-
-	if (openfile->current->data[openfile->current_x] == '\0')
-	    end_line = TRUE;
-	else
-	    openfile->current_x += char_mb_len;
-    }
-
-    /* Move forward until we find the first letter of the next word. */
-    if (openfile->current->data[openfile->current_x] == '\0')
-	end_line = TRUE;
-    else
-	openfile->current_x += char_mb_len;
-
-    for (; openfile->current != NULL;
-	openfile->current = openfile->current->next) {
-	while (!end_line) {
-	    char_mb_len = parse_mbchar(openfile->current->data +
-		openfile->current_x, char_mb, NULL);
-
-	    /* If we've found it, stop moving forward through the
-	     * current line. */
-	    if (is_word_mbchar(char_mb, allow_punct))
+    /* Move forward until we reach the start of a word. */
+    while (TRUE) {
+	/* If at the end of a line, move to the beginning of the next one. */
+	if (openfile->current->data[openfile->current_x] == '\0') {
+	    /* If at the end of the file, stop. */
+	    if (openfile->current->next == NULL)
 		break;
-
-	    if (openfile->current->data[openfile->current_x] == '\0')
-		end_line = TRUE;
-	    else
-		openfile->current_x += char_mb_len;
-	}
-
-	/* If we've found it, stop moving forward to the beginnings of
-	 * subsequent lines. */
-	if (!end_line)
-	    break;
-
-	if (openfile->current != openfile->filebot) {
-	    end_line = FALSE;
+	    openfile->current = openfile->current->next;
 	    openfile->current_x = 0;
+	    seen_space = TRUE;
+	} else {
+	    /* Step forward one character. */
+	    openfile->current_x = move_mbright(openfile->current->data,
+						openfile->current_x);
 	}
+
+	/* If this is not a word character, then it's a separator; else
+	 * if we've already seen a separator, then it's a word start. */
+	if (!is_word_mbchar(openfile->current->data + openfile->current_x,
+				allow_punct))
+	    seen_space = TRUE;
+	else if (seen_space)
+	    break;
     }
-
-    free(char_mb);
-
-    /* If we haven't found it, move to the end of the file. */
-    if (openfile->current == NULL)
-	openfile->current = openfile->filebot;
 
     openfile->placewewant = xplustabs();
 
@@ -314,125 +274,51 @@ void do_next_word_void(void)
 
 /* Move to the previous word in the file.  If allow_punct is TRUE, treat
  * punctuation as part of a word.  If allow_update is TRUE, update the
- * screen afterwards.  Return TRUE if we started on a word, and FALSE
- * otherwise. */
-bool do_prev_word(bool allow_punct, bool allow_update)
+ * screen afterwards. */
+void do_prev_word(bool allow_punct, bool allow_update)
 {
     size_t pww_save = openfile->placewewant;
     filestruct *current_save = openfile->current;
-    char *char_mb;
-    int char_mb_len;
-    bool begin_line = FALSE, started_on_word = FALSE;
+    bool seen_a_word = FALSE, step_forward = FALSE;
 
     assert(openfile->current != NULL && openfile->current->data != NULL);
 
-    char_mb = charalloc(mb_cur_max());
+    /* Move backward until we pass over the start of a word. */
+    while (TRUE) {
+	/* If at the head of a line, move to the end of the preceding one. */
+	if (openfile->current_x == 0) {
+	    if (openfile->current->prev == NULL)
+		break;
+	    openfile->current = openfile->current->prev;
+	    openfile->current_x = strlen(openfile->current->data);
+	}
 
-    /* Move backward until we find the character before the first letter
-     * of the current word. */
-    while (!begin_line) {
-	char_mb_len = parse_mbchar(openfile->current->data +
-		openfile->current_x, char_mb, NULL);
-
-	/* If we've found it, stop moving backward through the current
-	 * line. */
-	if (!is_word_mbchar(char_mb, allow_punct))
-	    break;
-
-	/* If we haven't found it, then we've started on a word, so set
-	 * started_on_word to TRUE. */
-	started_on_word = TRUE;
-
-	if (openfile->current_x == 0)
-	    begin_line = TRUE;
-	else
-	    openfile->current_x = move_mbleft(openfile->current->data,
-		openfile->current_x);
-    }
-
-    /* Move backward until we find the last letter of the previous
-     * word. */
-    if (openfile->current_x == 0)
-	begin_line = TRUE;
-    else
+	/* Step back one character. */
 	openfile->current_x = move_mbleft(openfile->current->data,
-		openfile->current_x);
+						openfile->current_x);
 
-    for (; openfile->current != NULL;
-	openfile->current = openfile->current->prev) {
-	while (!begin_line) {
-	    char_mb_len = parse_mbchar(openfile->current->data +
-		openfile->current_x, char_mb, NULL);
-
-	    /* If we've found it, stop moving backward through the
-	     * current line. */
-	    if (is_word_mbchar(char_mb, allow_punct))
-		break;
-
+	if (is_word_mbchar(openfile->current->data + openfile->current_x,
+				allow_punct)) {
+	    seen_a_word = TRUE;
+	    /* If at the head of a line now, this surely is a word start. */
 	    if (openfile->current_x == 0)
-		begin_line = TRUE;
-	    else
-		openfile->current_x =
-			move_mbleft(openfile->current->data,
-			openfile->current_x);
-	}
-
-	/* If we've found it, stop moving backward to the ends of
-	 * previous lines. */
-	if (!begin_line)
+		break;
+	} else if (seen_a_word) {
+	    /* This is space now: we've overshot the start of the word. */
+	    step_forward = TRUE;
 	    break;
-
-	if (openfile->current != openfile->fileage) {
-	    begin_line = FALSE;
-	    openfile->current_x = strlen(openfile->current->prev->data);
 	}
     }
 
-    /* If we haven't found it, move to the beginning of the file. */
-    if (openfile->current == NULL)
-	openfile->current = openfile->fileage;
-    /* If we've found it, move backward until we find the character
-     * before the first letter of the previous word. */
-    else if (!begin_line) {
-	if (openfile->current_x == 0)
-	    begin_line = TRUE;
-	else
-	    openfile->current_x = move_mbleft(openfile->current->data,
-		openfile->current_x);
-
-	while (!begin_line) {
-	    char_mb_len = parse_mbchar(openfile->current->data +
-		openfile->current_x, char_mb, NULL);
-
-	    /* If we've found it, stop moving backward through the
-	     * current line. */
-	    if (!is_word_mbchar(char_mb, allow_punct))
-		break;
-
-	    if (openfile->current_x == 0)
-		begin_line = TRUE;
-	    else
-		openfile->current_x =
-			move_mbleft(openfile->current->data,
-			openfile->current_x);
-	}
-
-	/* If we've found it, move forward to the first letter of the
-	 * previous word. */
-	if (!begin_line)
-	    openfile->current_x += char_mb_len;
-    }
-
-    free(char_mb);
-
+    if (step_forward)
+	/* Move one character forward again to sit on the start of the word. */
+	openfile->current_x = move_mbright(openfile->current->data,
+						openfile->current_x);
     openfile->placewewant = xplustabs();
 
     /* If allow_update is TRUE, update the screen. */
     if (allow_update)
 	edit_redraw(current_save, pww_save);
-
-    /* Return whether we started on a word. */
-    return started_on_word;
 }
 
 /* Move to the previous word in the file, treating punctuation as part
@@ -592,11 +478,11 @@ void do_down(
 	topline = openfile->edittop;
 	/* Reduce the amount when there are overlong lines at the top. */
 	for (enough = 1; enough < amount; enough++) {
-	    if (amount <= strlenpt(topline->data) / COLS) {
+	    amount -= strlenpt(topline->data) / COLS;
+	    if (amount <= 0) {
 		amount = enough;
 		break;
 	    }
-	    amount -= strlenpt(topline->data) / COLS;
 	    topline = topline->next;
 	}
     }

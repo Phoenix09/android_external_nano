@@ -1,4 +1,4 @@
-/* $Id: color.c 5249 2015-06-14 19:14:41Z bens $ */
+/* $Id: color.c 5477 2015-12-04 20:54:34Z bens $ */
 /**************************************************************************
  *   color.c                                                              *
  *                                                                        *
@@ -180,6 +180,9 @@ void color_update(void)
 	    if (openfile->colorstrings != NULL)
 		break;
 	}
+
+	if (openfile->colorstrings == NULL)
+	    statusbar(_("Unknown syntax name: %s"), syntaxstr);
     }
 
     /* If we didn't specify a syntax override string, or if we did and
@@ -362,67 +365,49 @@ void color_update(void)
     }
 }
 
-/* Reset the multicolor info cache for records for any lines which need
- * to be recalculated. */
-void reset_multis_after(filestruct *fileptr, int mindex)
+/* Reset the multiline coloring cache for one specific regex (given by
+ * index) for lines that need reevaluation. */
+void reset_multis_for_id(filestruct *fileptr, int index)
 {
-    filestruct *oof;
-    for (oof = fileptr->next; oof != NULL; oof = oof->next) {
-	alloc_multidata_if_needed(oof);
-	if (oof->multidata == NULL)
-	    continue;
-	if (oof->multidata[mindex] != CNONE)
-	    oof->multidata[mindex] = -1;
-	else
+    filestruct *row;
+
+    /* Reset the cache of earlier lines, as far back as needed. */
+    for (row = fileptr->prev; row != NULL; row = row->prev) {
+	alloc_multidata_if_needed(row);
+	if (row->multidata[index] == CNONE)
 	    break;
+	row->multidata[index] = -1;
     }
-    for (; oof != NULL; oof = oof->next) {
-	alloc_multidata_if_needed(oof);
-	if (oof->multidata == NULL)
-	    continue;
-	if (oof->multidata[mindex] == CNONE)
-	    oof->multidata[mindex] = -1;
-	else
+    for (; row != NULL; row = row->prev) {
+	alloc_multidata_if_needed(row);
+	if (row->multidata[index] != CNONE)
 	    break;
+	row->multidata[index] = -1;
     }
+
+    /* Reset the cache of the current line. */
+    fileptr->multidata[index] = -1;
+
+    /* Reset the cache of later lines, as far ahead as needed. */
+    for (row = fileptr->next; row != NULL; row = row->next) {
+	alloc_multidata_if_needed(row);
+	if (row->multidata[index] == CNONE)
+	    break;
+	row->multidata[index] = -1;
+    }
+    for (; row != NULL; row = row->next) {
+	alloc_multidata_if_needed(row);
+	if (row->multidata[index] != CNONE)
+	    break;
+	row->multidata[index] = -1;
+    }
+
     edit_refresh_needed = TRUE;
 }
 
-void reset_multis_before(filestruct *fileptr, int mindex)
-{
-    filestruct *oof;
-    for (oof = fileptr->prev; oof != NULL; oof = oof->prev) {
-	alloc_multidata_if_needed(oof);
-	if (oof->multidata == NULL)
-	    continue;
-	if (oof->multidata[mindex] != CNONE)
-	    oof->multidata[mindex] = -1;
-	else
-	    break;
-    }
-    for (; oof != NULL; oof = oof->prev) {
-	alloc_multidata_if_needed(oof);
-	if (oof->multidata == NULL)
-	    continue;
-	if (oof->multidata[mindex] == CNONE)
-	    oof->multidata[mindex] = -1;
-	else
-	    break;
-    }
-    edit_refresh_needed = TRUE;
-}
-
-/* Reset one multiline regex info. */
-void reset_multis_for_id(filestruct *fileptr, int num)
-{
-    reset_multis_before(fileptr, num);
-    reset_multis_after(fileptr, num);
-    fileptr->multidata[num] = -1;
-}
-
-/* Reset multi-line strings around a filestruct ptr, trying to be smart
- * about stopping.  Bool force means: reset everything regardless, useful
- * when we don't know how much screen state has changed. */
+/* Reset multi-line strings around the filestruct fileptr, trying to be
+ * smart about stopping.  Bool force means: reset everything regardless,
+ * useful when we don't know how much screen state has changed. */
 void reset_multis(filestruct *fileptr, bool force)
 {
     int nobegin, noend;
@@ -433,34 +418,32 @@ void reset_multis(filestruct *fileptr, bool force)
 	return;
 
     for (; tmpcolor != NULL; tmpcolor = tmpcolor->next) {
-
 	/* If it's not a multi-line regex, amscray. */
 	if (tmpcolor->end == NULL)
 	    continue;
 
 	alloc_multidata_if_needed(fileptr);
-	if (force == TRUE) {
-	    reset_multis_for_id(fileptr, tmpcolor->id);
-	    continue;
+
+	if (force == FALSE) {
+	    /* Check whether the multidata still matches the current situation. */
+	    nobegin = regexec(tmpcolor->start, fileptr->data, 1, &startmatch, 0);
+	    noend = regexec(tmpcolor->end, fileptr->data, 1, &endmatch, 0);
+	    if ((fileptr->multidata[tmpcolor->id] == CWHOLELINE ||
+			fileptr->multidata[tmpcolor->id] == CNONE) &&
+			nobegin && noend)
+		continue;
+	    else if (fileptr->multidata[tmpcolor->id] == CSTARTENDHERE &&
+			!nobegin && !noend && startmatch.rm_so < endmatch.rm_so)
+		continue;
+	    else if (fileptr->multidata[tmpcolor->id] == CBEGINBEFORE &&
+			nobegin && !noend)
+		continue;
+	    else if (fileptr->multidata[tmpcolor->id] == CENDAFTER &&
+			!nobegin && noend)
+		continue;
 	}
 
-	/* Figure out where the first begin and end are to determine if
-	 * things changed drastically for the precalculated multi values. */
-	nobegin = regexec(tmpcolor->start, fileptr->data, 1, &startmatch, 0);
-	noend = regexec(tmpcolor->end, fileptr->data, 1, &endmatch, 0);
-	if (fileptr->multidata[tmpcolor->id] == CWHOLELINE) {
-	    if (nobegin && noend)
-		continue;
-	} else if (fileptr->multidata[tmpcolor->id] == CNONE) {
-	    if (nobegin && noend)
-		continue;
-	}  else if (fileptr->multidata[tmpcolor->id] & CBEGINBEFORE && !noend
-	  && (nobegin || endmatch.rm_eo > startmatch.rm_eo)) {
-	    reset_multis_after(fileptr, tmpcolor->id);
-	    continue;
-	}
-
-	/* If we got here, assume the worst. */
+	/* If we got here, things have changed. */
 	reset_multis_for_id(fileptr, tmpcolor->id);
     }
 }

@@ -1,4 +1,4 @@
-/* $Id: help.c 5417 2015-11-15 06:52:33Z astyanax $ */
+/* $Id: help.c 5366 2015-08-16 17:53:28Z bens $ */
 /**************************************************************************
  *   help.c                                                               *
  *                                                                        *
@@ -32,9 +32,12 @@
 static char *help_text = NULL;
 	/* The text displayed in the help window. */
 
-/* Our main help browser function.  refresh_func is the function we will
- * call to refresh the edit window. */
-void do_help(void (*refresh_func)(void))
+static char *end_of_intro = NULL;
+	/* The point in the help text where the introductory paragraphs end
+	 * and the shortcut descriptions begin. */
+
+/* Our main help-viewer function. */
+void do_help(void)
 {
     int kbinput = ERR;
     bool old_no_help = ISSET(NO_HELP);
@@ -75,9 +78,9 @@ void do_help(void (*refresh_func)(void))
     while (TRUE) {
 	size_t i;
 
-	/* Get the last line of the help text. */
 	ptr = help_text;
 
+	/* Find the line number of the last line of the help text. */
 	for (last_line = 0; *ptr != '\0'; last_line++) {
 	    ptr += help_line_len(ptr);
 	    if (*ptr == '\n')
@@ -87,21 +90,20 @@ void do_help(void (*refresh_func)(void))
 	if (last_line > 0)
 	    last_line--;
 
-	/* Display the help text if we don't have a key, or if the help
-	 * text has moved. */
-	if (kbinput == ERR || line != old_line) {
+	/* Redisplay if the text was scrolled or an invalid key was pressed. */
+	if (line != old_line || kbinput == ERR) {
 	    blank_edit();
 
 	    ptr = help_text;
 
-	    /* Calculate where in the text we should be, based on the
-	     * page. */
+	    /* Advance in the text to the first line to be displayed. */
 	    for (i = 0; i < line; i++) {
 		ptr += help_line_len(ptr);
 		if (*ptr == '\n')
 		    ptr++;
 	    }
 
+	    /* Now display as many lines as the window will hold. */
 	    for (i = 0; i < editwinrows && *ptr != '\0'; i++) {
 		size_t j = help_line_len(ptr);
 
@@ -122,7 +124,7 @@ void do_help(void (*refresh_func)(void))
 	if (kbinput == KEY_WINCH) {
 	    kbinput = ERR;
 	    curs_set(0);
-	    continue;
+	    continue;    /* Redraw the screen. */
 	}
 #endif
 
@@ -158,7 +160,7 @@ void do_help(void (*refresh_func)(void))
 	    if (line + (editwinrows - 1) < last_line)
 		line = last_line - (editwinrows - 1);
 	} else if (func == do_exit) {
-	    /* Exit from the help browser. */
+	    /* Exit from the help viewer. */
 	    break;
 	}
     }
@@ -173,35 +175,35 @@ void do_help(void (*refresh_func)(void))
 	bottombars(oldmenu);
 
     curs_set(1);
-    refresh_func();
 
-    /* The help_init() at the beginning allocated help_text.  Since
-     * help_text has now been written to the screen, we don't need it
-     * anymore. */
+#ifndef DISABLE_BROWSER
+    if (oldmenu == MBROWSER || oldmenu == MWHEREISFILE || oldmenu == MGOTODIR)
+	browser_refresh();
+    else
+#endif
+	edit_refresh();
+
+    /* We're exiting from the help screen. */
     free(help_text);
-    help_text = NULL;
 }
 
-/* This function allocates help_text, and stores the help string in it.
- * help_text should be NULL initially. */
+/* Allocate space for the help text for the current menu, and concatenate
+ * the different pieces of text into it. */
 void help_init(void)
 {
-    size_t allocsize = 0;	/* Space needed for help_text. */
-    const char *htx[3];		/* Untranslated help message.  We break
-				 * it up into three chunks in case the
-				 * full string is too long for the
-				 * compiler to handle. */
+    size_t allocsize = 0;
+	/* Space needed for help_text. */
+    const char *htx[3];
+	/* Untranslated help introduction.  We break it up into three chunks
+	 * in case the full string is too long for the compiler to handle. */
     char *ptr;
     const subnfunc *f;
     const sc *s;
-    int scsfound = 0;
 
 #ifndef NANO_TINY
-#ifndef DISABLE_NANORC
     bool old_whitespace = ISSET(WHITESPACE_DISPLAY);
 
     UNSET(WHITESPACE_DISPLAY);
-#endif
 #endif
 
     /* First, set up the initial help text for the current function. */
@@ -368,9 +370,9 @@ void help_init(void)
     /* Calculate the length of the shortcut help text.  Each entry has
      * one or two keys, which fill 16 columns, plus translated text,
      * plus one or two \n's. */
-	for (f = allfuncs; f != NULL; f = f->next)
-	    if (f->menus & currmenu)
-		allocsize += (16 * mb_cur_max()) + strlen(f->help) + 2;
+    for (f = allfuncs; f != NULL; f = f->next)
+	if (f->menus & currmenu)
+	    allocsize += (16 * mb_cur_max()) + strlen(f->help) + 2;
 
 #ifndef NANO_TINY
     /* If we're on the main list, we also count the toggle help text.
@@ -385,10 +387,6 @@ void help_init(void)
     }
 #endif
 
-    /* help_text has been freed and set to NULL unless the user resized
-     * while in the help screen. */
-    free(help_text);
-
     /* Allocate space for the help text. */
     help_text = charalloc(allocsize + 1);
 
@@ -401,19 +399,20 @@ void help_init(void)
 
     ptr = help_text + strlen(help_text);
 
+    /* Remember this end-of-introduction, start-of-shortcuts. */
+    end_of_intro = ptr;
+
     /* Now add our shortcut info. */
     for (f = allfuncs; f != NULL; f = f->next) {
+	int scsfound = 0;
 
 	if ((f->menus & currmenu) == 0)
 	    continue;
 
 	/* Let's simply show the first two shortcuts from the list. */
-	for (s = sclist, scsfound = 0; s != NULL; s = s->next) {
+	for (s = sclist; s != NULL; s = s->next) {
 
-	    if (s->type == RAWINPUT)
-		continue;
-
-	    if ((s->menu & currmenu) == 0)
+	    if ((s->menus & currmenu) == 0)
 		continue;
 
 	    if (s->scfunc == f->scfunc) {
@@ -448,33 +447,28 @@ void help_init(void)
 	int maximum = 0, counter = 0;
 
 	/* First see how many toggles there are. */
-	for (s = sclist; s != NULL; s = s->next) {
+	for (s = sclist; s != NULL; s = s->next)
 	   maximum = (s->toggle && s->ordinal > maximum) ? s->ordinal : maximum;
-	}
 
 	/* Now show them in the original order. */
 	while (counter < maximum) {
 	    counter++;
-	    for (s = sclist; s != NULL; s = s->next) {
+	    for (s = sclist; s != NULL; s = s->next)
 		if (s->toggle && s->ordinal == counter) {
-		ptr += sprintf(ptr, "%s\t\t%s %s\n", (s->menu == MMAIN ? s->keystr : ""),
+		    ptr += sprintf(ptr, "%s\t\t%s %s\n", (s->menus == MMAIN ? s->keystr : ""),
 				 _(flagtostr(s->toggle)), _("enable/disable"));
-	    if (s->toggle == NO_COLOR_SYNTAX || s->toggle == TABS_TO_SPACES)
-		ptr += sprintf(ptr, "\n");
+		    if (s->toggle == NO_COLOR_SYNTAX || s->toggle == TABS_TO_SPACES)
+			ptr += sprintf(ptr, "\n");
 		    break;
-	}
-	    }
+		}
 	}
     }
 
-#ifndef DISABLE_NANORC
     if (old_whitespace)
 	SET(WHITESPACE_DISPLAY);
-#endif
 #endif /* !NANO_TINY */
 
-    /* If all went well, we didn't overwrite the allocated space for
-     * help_text. */
+    /* If all went well, we didn't overwrite the allocated space. */
     assert(strlen(help_text) <= allocsize + 1);
 }
 
@@ -496,48 +490,45 @@ functionptrtype parse_help_input(int *kbinput)
     return func_from_key(kbinput);
 }
 
-/* Calculate the next line of help_text, starting at ptr. */
+/* Calculate the displayable length of the help-text line starting at ptr. */
 size_t help_line_len(const char *ptr)
 {
-    int help_cols = (COLS > 24) ? COLS - 1 : 24;
+    size_t wrapping_point = (COLS > 24) ? COLS - 1 : 24;
+	/* The target width for wrapping long lines. */
+    ssize_t wrap_location;
+	/* Actual position where the line can be wrapped. */
+    size_t length = 0;
+	/* Full length of the line, until the first newline. */
 
-    /* Try to break the line at (COLS - 1) columns if we have more than
-     * 24 columns, and at 24 columns otherwise. */
-    ssize_t wrap_loc = break_line(ptr, help_cols, TRUE);
-    size_t retval = (wrap_loc < 0) ? 0 : wrap_loc;
-    size_t retval_save = retval;
+    /* Avoid overwide paragraphs in the introductory text. */
+    if (ptr < end_of_intro && COLS > 74)
+	wrapping_point = 74;
 
-    retval = 0;
+    wrap_location = break_line(ptr, wrapping_point, TRUE);
 
     /* Get the length of the entire line up to a null or a newline. */
-    while (*(ptr + retval) != '\0' && *(ptr + retval) != '\n')
-	retval += move_mbright(ptr + retval, 0);
+    while (*(ptr + length) != '\0' && *(ptr + length) != '\n')
+	length = move_mbright(ptr, length);
 
-    /* If the entire line doesn't go more than one column beyond where
-     * we tried to break it, we should display it as-is.  Otherwise, we
-     * should display it only up to the break. */
-    if (strnlenpt(ptr, retval) > help_cols + 1)
-	retval = retval_save;
-
-    return retval;
+    /* If the entire line will just fit the screen, don't wrap it. */
+    if (strnlenpt(ptr, length) <= wrapping_point + 1)
+	return length;
+    else if (wrap_location > 0)
+	return wrap_location;
+    else
+	return 0;
 }
 
 #endif /* !DISABLE_HELP */
 
-/* Start the help browser. */
+/* Start the help viewer. */
 void do_help_void(void)
 {
 #ifndef DISABLE_HELP
-    /* Start the help browser, with the correct refresher for afterwards. */
-#ifndef DISABLE_BROWSER
-    if (currmenu == MBROWSER || currmenu == MWHEREISFILE || currmenu == MGOTODIR)
-	do_help(&browser_refresh);
-    else
-#endif
-	do_help(&edit_refresh);
+    do_help();
 #else
     if (currmenu == MMAIN)
-	nano_disabled_msg();
+	say_there_is_no_help();
     else
 	beep();
 #endif /* !DISABLE_HELP */

@@ -1,4 +1,4 @@
-/* $Id: browser.c 5273 2015-06-28 06:32:56Z bens $ */
+/* $Id: browser.c 5457 2015-11-30 16:44:44Z bens $ */
 /**************************************************************************
  *   browser.c                                                            *
  *                                                                        *
@@ -24,6 +24,7 @@
 
 #include "proto.h"
 
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -157,7 +158,7 @@ char *do_browser(char *path, DIR *dir)
 		/* If we selected the same filename as last time,
 		 * put back the Enter key so that it's read in. */
 		if (old_selected == selected)
-		    unget_kbinput(sc_seq_or(do_enter_void, 0), FALSE, FALSE);
+		    unget_kbinput(sc_seq_or(do_enter, 0), FALSE, FALSE);
 	    }
 	}
 #endif /* !DISABLE_MOUSE */
@@ -173,7 +174,7 @@ char *do_browser(char *path, DIR *dir)
 	    browser_refresh();
 	    curs_set(0);
 #else
-	    nano_disabled_msg();
+	    say_there_is_no_help();
 #endif
 	} else if (func == do_search) {
 	    /* Search for a filename. */
@@ -284,7 +285,7 @@ char *do_browser(char *path, DIR *dir)
 	} else if (func == do_right) {
 	    if (selected < filelist_len - 1)
 		selected++;
-	} else if (func == do_enter_void) {
+	} else if (func == do_enter) {
 	    /* We can't move up from "/". */
 	    if (strcmp(filelist[selected], "/..") == 0) {
 		statusbar(_("Can't move up a directory"));
@@ -435,31 +436,31 @@ void browser_init(const char *path, DIR *dir)
 
     assert(path != NULL && path[strlen(path) - 1] == '/' && dir != NULL);
 
-    /* Set longest to zero, just before we initialize it. */
     longest = 0;
 
+    /* Find the length of the longest filename in the current folder. */
     while ((nextdir = readdir(dir)) != NULL) {
-	size_t d_len;
+	size_t name_len = strlenpt(nextdir->d_name);
 
-	/* Don't show the "." entry. */
-	if (strcmp(nextdir->d_name, ".") == 0)
-	    continue;
-
-	d_len = strlenpt(nextdir->d_name);
-	if (d_len > longest)
-	    longest = (d_len > COLS) ? COLS : d_len;
+	if (name_len > longest)
+	    longest = name_len;
 
 	i++;
     }
 
-    rewinddir(dir);
-
-    /* Put 10 columns' worth of blank space between columns of filenames
+    /* Put 10 characters' worth of blank space between columns of filenames
      * in the list whenever possible, as Pico does. */
     longest += 10;
 
-    if (filelist != NULL)
-	free_chararray(filelist, filelist_len);
+    /* Make sure longest is between 15 and COLS. */
+    if (longest < 15)
+	longest = 15;
+    if (longest > COLS)
+	longest = COLS;
+
+    rewinddir(dir);
+
+    free_chararray(filelist, filelist_len);
 
     filelist_len = i;
 
@@ -484,12 +485,6 @@ void browser_init(const char *path, DIR *dir)
     filelist_len = i;
 
     closedir(dir);
-
-    /* Make sure longest is between 15 and COLS. */
-    if (longest < 15)
-	longest = 15;
-    if (longest > COLS)
-	longest = COLS;
 
     /* Set width to zero, just before we initialize it. */
     width = 0;
@@ -542,7 +537,7 @@ functionptrtype parse_browser_input(int *kbinput)
 		return goto_dir_void;
 	    case 'S':
 	    case 's':
-		return do_enter_void;
+		return do_enter;
 	    case 'W':
 	    case 'w':
 		return do_search;
@@ -637,7 +632,7 @@ void browser_refresh(void)
 	    } else
 		foo = mallocstrcpy(NULL, _("(dir)"));
 	} else {
-	    unsigned long result = st.st_size;
+	    off_t result = st.st_size;
 	    char modifier;
 
 	    foo = charalloc(foomaxlen + 1);
@@ -655,10 +650,10 @@ void browser_refresh(void)
 		modifier = 'G';  /* gigabytes */
 	    }
 
-	    /* If less than a terabyte, or if numbers can't even go
-	     * that high, show the size, otherwise show "(huge)". */
-	    if (st.st_size < (1 << 40) || (1 << 40) == 0)
-		sprintf(foo, "%4lu %cB", result, modifier);
+	    /* Show the size if less than a terabyte,
+	     * otherwise show "(huge)". */
+	    if (result < (1 << 10))
+		sprintf(foo, "%4ju %cB", (intmax_t)result, modifier);
 	    else
 		/* TRANSLATORS: Try to keep this at most 7 characters.
 		 * If necessary, you can leave out the parentheses. */

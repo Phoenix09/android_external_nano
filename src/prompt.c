@@ -1,4 +1,4 @@
-/* $Id: prompt.c 5249 2015-06-14 19:14:41Z bens $ */
+/* $Id: prompt.c 5403 2015-11-11 19:56:35Z bens $ */
 /**************************************************************************
  *   prompt.c                                                             *
  *                                                                        *
@@ -150,7 +150,7 @@ int do_statusbar_input(bool *ran_func, bool *finished,
 	}
 
 	if (have_shortcut) {
-	    if (s->scfunc == do_tab || s->scfunc == do_enter_void)
+	    if (s->scfunc == do_tab || s->scfunc == do_enter)
 		;
 	    else if (s->scfunc == total_refresh)
 		total_statusbar_refresh(refresh_func);
@@ -191,7 +191,7 @@ int do_statusbar_input(bool *ran_func, bool *finished,
 		     * set finished to TRUE to indicate that we're done. */
 		    if (got_enter) {
 			get_input(NULL, 1);
-			input = sc_seq_or(do_enter_void, 0);
+			input = sc_seq_or(do_enter, 0);
 			*finished = TRUE;
 		    }
 		}
@@ -814,7 +814,7 @@ functionptrtype get_prompt_string(int *actual, bool allow_tabs,
 
 	func = func_from_key(&kbinput);
 
-	if (func == do_cancel || func == do_enter_void)
+	if (func == do_cancel || func == do_enter)
 	    break;
 
 #ifndef DISABLE_TABCOMP
@@ -932,7 +932,7 @@ functionptrtype get_prompt_string(int *actual, bool allow_tabs,
      * we've finished putting in an answer, reset the statusbar cursor
      * position too. */
     if (func) {
-	if (func == do_cancel || func == do_enter_void || ran_func) {
+	if (func == do_cancel || func == do_enter || ran_func) {
 	    statusbar_x = old_statusbar_x;
 	    statusbar_pww = old_pww;
 
@@ -1015,7 +1015,7 @@ int do_prompt(bool allow_tabs,
      * properly. */
     if (func == do_cancel)
 	retval = -1;
-    else if (func == do_enter_void)
+    else if (func == do_enter)
 	retval = (*answer == '\0') ? -2 : 0;
 
     blank_statusbar();

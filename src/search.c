@@ -1,4 +1,4 @@
-/* $Id: search.c 5416 2015-11-15 06:48:56Z astyanax $ */
+/* $Id: search.c 5437 2015-11-24 13:24:01Z bens $ */
 /**************************************************************************
  *   search.c                                                             *
  *                                                                        *
@@ -474,6 +474,31 @@ void do_search(void)
     search_replace_abort();
 }
 
+#ifndef NANO_TINY
+/* Search in the backward direction for the next occurrence. */
+void do_findprevious(void)
+{
+    if ISSET(BACKWARDS_SEARCH)
+	do_research();
+    else {
+	SET(BACKWARDS_SEARCH);
+	do_research();
+	UNSET(BACKWARDS_SEARCH);
+    }
+}
+
+/* Search in the forward direction for the next occurrence. */
+void do_findnext(void)
+{
+    if ISSET(BACKWARDS_SEARCH) {
+	UNSET(BACKWARDS_SEARCH);
+	do_research();
+	SET(BACKWARDS_SEARCH);
+    } else
+	do_research();
+}
+#endif
+
 #if !defined(NANO_TINY) || !defined(DISABLE_BROWSER)
 /* Search for the last string without prompting. */
 void do_research(void)
@@ -522,17 +547,13 @@ void do_research(void)
 #endif /* !NANO_TINY */
 
 #ifdef HAVE_REGEX_H
+/* Calculate the size of the replacement text, taking possible
+ * subexpressions \1 to \9 into account.  Return the replacement
+ * text in the passed string only when create is TRUE. */
 int replace_regexp(char *string, bool create)
 {
-    /* We have a split personality here.  If create is FALSE, just
-     * calculate the size of the replacement line (necessary because of
-     * subexpressions \1 to \9 in the replaced text). */
-
     const char *c = last_replace;
-    size_t search_match_count = regmatches[0].rm_eo -
-	regmatches[0].rm_so;
-    size_t new_line_size = strlen(openfile->current->data) + 1 -
-	search_match_count;
+    size_t replacement_size = 0;
 
     /* Iterate through the replacement text to handle subexpression
      * replacement using \1, \2, \3, etc. */
@@ -544,7 +565,7 @@ int replace_regexp(char *string, bool create)
 	    if (create)
 		*string++ = *c;
 	    c++;
-	    new_line_size++;
+	    replacement_size++;
 	} else {
 	    size_t i = regmatches[num].rm_eo - regmatches[num].rm_so;
 
@@ -552,7 +573,7 @@ int replace_regexp(char *string, bool create)
 	    c += 2;
 
 	    /* But add the length of the subexpression to new_size. */
-	    new_line_size += i;
+	    replacement_size += i;
 
 	    /* And if create is TRUE, append the result of the
 	     * subexpression match to the new line. */
@@ -567,25 +588,26 @@ int replace_regexp(char *string, bool create)
     if (create)
 	*string = '\0';
 
-    return new_line_size;
+    return replacement_size;
 }
 #endif /* HAVE_REGEX_H */
 
+/* Return a copy of the current line with one needle replaced. */
 char *replace_line(const char *needle)
 {
     char *copy;
-    size_t new_line_size, search_match_count;
+    size_t match_len;
+    size_t new_line_size = strlen(openfile->current->data) + 1;
 
-    /* Calculate the size of the new line. */
+    /* First adjust the size of the new line for the change. */
 #ifdef HAVE_REGEX_H
     if (ISSET(USE_REGEXP)) {
-	search_match_count = regmatches[0].rm_eo - regmatches[0].rm_so;
-	new_line_size = replace_regexp(NULL, FALSE);
+	match_len = regmatches[0].rm_eo - regmatches[0].rm_so;
+	new_line_size += replace_regexp(NULL, FALSE) - match_len;
     } else {
 #endif
-	search_match_count = strlen(needle);
-	new_line_size = strlen(openfile->current->data) -
-		search_match_count + strlen(answer) + 1;
+	match_len = strlen(needle);
+	new_line_size += strlen(answer) - match_len;
 #ifdef HAVE_REGEX_H
     }
 #endif
@@ -593,10 +615,10 @@ char *replace_line(const char *needle)
     /* Create the buffer. */
     copy = charalloc(new_line_size);
 
-    /* The head of the original line. */
+    /* Copy the head of the original line. */
     strncpy(copy, openfile->current->data, openfile->current_x);
 
-    /* The replacement text. */
+    /* Add the replacement text. */
 #ifdef HAVE_REGEX_H
     if (ISSET(USE_REGEXP))
 	replace_regexp(copy + openfile->current_x, TRUE);
@@ -604,11 +626,10 @@ char *replace_line(const char *needle)
 #endif
 	strcpy(copy + openfile->current_x, answer);
 
-    /* The tail of the original line. */
-    assert(openfile->current_x + search_match_count <= strlen(openfile->current->data));
+    assert(openfile->current_x + match_len <= strlen(openfile->current->data));
 
-    strcat(copy, openfile->current->data + openfile->current_x +
-	search_match_count);
+    /* Copy the tail of the original line. */
+    strcat(copy, openfile->current->data + openfile->current_x + match_len);
 
     return copy;
 }
@@ -726,14 +747,12 @@ ssize_t do_replace_loop(
 	    length_change = strlen(copy) - strlen(openfile->current->data);
 
 #ifndef NANO_TINY
-	    /* If the mark was on and (mark_begin, mark_begin_x) was the
-	     * top of it, don't change mark_begin_x. */
-	    if (!old_mark_set || !right_side_up) {
-		/* Keep mark_begin_x in sync with the text changes. */
+	    /* If the mark was on and it was located after the cursor,
+	     * then adjust its x position for any text length changes. */
+	    if (old_mark_set && !right_side_up) {
 		if (openfile->current == openfile->mark_begin &&
 			openfile->mark_begin_x > openfile->current_x) {
-		    if (openfile->mark_begin_x < openfile->current_x +
-			match_len)
+		    if (openfile->mark_begin_x < openfile->current_x + match_len)
 			openfile->mark_begin_x = openfile->current_x;
 		    else
 			openfile->mark_begin_x += length_change;
@@ -741,11 +760,10 @@ ssize_t do_replace_loop(
 		}
 	    }
 
-	    /* If the mark was on and (current, current_x) was the top
-	     * of it, don't change real_current_x. */
+	    /* If the mark was not on or it was before the cursor, then
+	     * adjust the cursor's x position for any text length changes. */
 	    if (!old_mark_set || right_side_up) {
 #endif
-		/* Keep real_current_x in sync with the text changes. */
 		if (openfile->current == real_current &&
 			openfile->current_x <= *real_current_x) {
 		    if (*real_current_x < openfile->current_x + match_len)
@@ -772,9 +790,8 @@ ssize_t do_replace_loop(
 #endif
 		openfile->current_x += match_len + length_change - 1;
 
-	    /* Clean up. */
-	    openfile->totsize += mbstrlen(copy) -
-		mbstrlen(openfile->current->data);
+	    /* Update the file size, and put the changed line into place. */
+	    openfile->totsize += mbstrlen(copy) - mbstrlen(openfile->current->data);
 	    free(openfile->current->data);
 	    openfile->current->data = copy;
 
@@ -1290,7 +1307,6 @@ void update_history(filestruct **h, const char *s)
 	foo = p;
 	bar = p->next;
 	unlink_node(foo);
-	delete_node(foo);
 	renumber(bar);
     }
 
@@ -1302,13 +1318,12 @@ void update_history(filestruct **h, const char *s)
 
 	*hage = (*hage)->next;
 	unlink_node(foo);
-	delete_node(foo);
 	renumber(*hage);
     }
 
     /* Add the new entry to the end. */
     (*hbot)->data = mallocstrcpy((*hbot)->data, s);
-    splice_node(*hbot, make_new_node(*hbot), (*hbot)->next);
+    splice_node(*hbot, make_new_node(*hbot));
     *hbot = (*hbot)->next;
     (*hbot)->data = mallocstrcpy(NULL, "");
 

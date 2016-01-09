@@ -1,4 +1,4 @@
-/* $Id: proto.h 5254 2015-06-17 11:18:20Z bens $ */
+/* $Id: proto.h 5476 2015-12-04 11:01:48Z bens $ */
 /**************************************************************************
  *   proto.h                                                              *
  *                                                                        *
@@ -35,6 +35,11 @@ extern bool meta_key;
 extern bool func_key;
 extern bool focusing;
 
+#ifndef NANO_TINY
+extern int controlleft;
+extern int controlright;
+#endif
+
 #ifndef DISABLE_WRAPJUSTIFY
 extern ssize_t fill;
 extern ssize_t wrap_at;
@@ -62,7 +67,7 @@ extern openfilestruct *openfile;
 extern char *matchbrackets;
 #endif
 
-#if !defined(NANO_TINY) && !defined(DISABLE_NANORC)
+#ifndef NANO_TINY
 extern char *whitespace;
 extern int whitespace_len[2];
 #endif
@@ -260,7 +265,7 @@ void cut_to_eof(void);
 #endif
 void do_cut_text(
 #ifndef NANO_TINY
-	bool copy_text, bool cut_till_eof, bool undoing
+	bool copy_text, bool cut_till_eof
 #else
 	void
 #endif
@@ -274,7 +279,6 @@ void do_uncut_text(void);
 
 /* All functions in files.c. */
 void make_new_buffer(void);
-void initialize_buffer(void);
 void initialize_buffer_text(void);
 void open_buffer(const char *filename, bool undoable);
 #ifndef DISABLE_SPELLER
@@ -321,6 +325,9 @@ bool write_marked_file(const char *name, FILE *f_open, bool tmp,
 #endif
 bool do_writeout(bool exiting);
 void do_writeout_void(void);
+#ifndef NANO_TINY
+void do_savefile(void);
+#endif
 char *real_dir_from_tilde(const char *buf);
 #if !defined(DISABLE_TABCOMP) || !defined(DISABLE_BROWSER)
 int diralphasort(const void *va, const void *vb);
@@ -371,7 +378,7 @@ void thanks_for_all_the_fish(void);
 
 /* All functions in help.c. */
 #ifndef DISABLE_HELP
-void do_help(void (*refresh_func)(void));
+void do_help(void);
 void help_init(void);
 functionptrtype parse_help_input(int *kbinput);
 size_t help_line_len(const char *ptr);
@@ -392,7 +399,7 @@ void do_para_end_void(void);
 #ifndef NANO_TINY
 bool do_next_word(bool allow_punct, bool allow_update);
 void do_next_word_void(void);
-bool do_prev_word(bool allow_punct, bool allow_update);
+void do_prev_word(bool allow_punct, bool allow_update);
 void do_prev_word_void(void);
 #endif
 void do_home(void);
@@ -425,9 +432,8 @@ void do_right(void);
 /* All functions in nano.c. */
 filestruct *make_new_node(filestruct *prevnode);
 filestruct *copy_node(const filestruct *src);
-void splice_node(filestruct *begin, filestruct *newnode, filestruct
-	*end);
-void unlink_node(const filestruct *fileptr);
+void splice_node(filestruct *afterthis, filestruct *newnode);
+void unlink_node(filestruct *fileptr);
 void delete_node(filestruct *fileptr);
 filestruct *copy_filestruct(const filestruct *src);
 void free_filestruct(filestruct *src);
@@ -447,6 +453,10 @@ void delete_opennode(openfilestruct *fileptr);
 void free_openfilestruct(openfilestruct *src);
 #endif
 void print_view_warning(void);
+void show_restricted_warning(void);
+#ifdef DISABLE_HELP
+void say_there_is_no_help(void);
+#endif
 void finish(void);
 void die(const char *msg, ...);
 void die_save_file(const char *die_filename
@@ -469,7 +479,7 @@ void usage(void);
 void version(void);
 int more_space(void);
 int no_help(void);
-void nano_disabled_msg(void);
+void no_current_file_name_warning(void);
 void do_exit(void);
 void signal_init(void);
 RETSIGTYPE handle_hupterm(int signal);
@@ -588,6 +598,10 @@ bool findnextstr(
 	const char *needle, size_t *needle_len);
 void findnextstr_wrap_reset(void);
 void do_search(void);
+#ifndef NANO_TINY
+void do_findprevious(void);
+void do_findnext(void);
+#endif
 #if !defined(NANO_TINY) || !defined(DISABLE_BROWSER)
 void do_research(void);
 #endif
@@ -636,6 +650,10 @@ void do_mark(void);
 #endif
 void do_delete(void);
 void do_backspace(void);
+#ifndef NANO_TINY
+void do_cut_prev_word(void);
+void do_cut_next_word(void);
+#endif
 void do_tab(void);
 #ifndef NANO_TINY
 void do_indent(ssize_t cols);
@@ -644,8 +662,7 @@ void do_unindent(void);
 void do_undo(void);
 void do_redo(void);
 #endif
-void do_enter(bool undoing);
-void do_enter_void(void);
+void do_enter(void);
 #ifndef NANO_TINY
 RETSIGTYPE cancel_command(int signal);
 bool execute_command(const char *command);
@@ -734,6 +751,7 @@ void new_magicline(void);
 void remove_magicline(void);
 void mark_order(const filestruct **top, size_t *top_x, const filestruct
 	**bot, size_t *bot_x, bool *right_side_up);
+void discard_until(undo *thisone);
 void add_undo(undo_type action);
 void update_undo(undo_type action);
 #endif

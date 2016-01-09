@@ -1,5 +1,5 @@
 .\" Hey, EMACS: -*- nroff -*-
-.\" $Id: nanorc.5 5243 2015-06-07 18:45:34Z bens $
+.\" $Id: nanorc.5 5480 2015-12-05 11:04:24Z bens $
 .\"
 .\" Copyright (C) 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011,
 .\" 2013, 2014, 2015 Free Software Foundation, Inc.
@@ -20,7 +20,7 @@
 .\"   Documentation License along with this program.  If not, see
 .\"   <http://www.gnu.org/licenses/>.
 .\"
-.TH NANORC 5 "version 2.4.2" "June 2015"
+.TH NANORC 5 "version 2.5.0" "December 2015"
 .\" Please adjust this date whenever revising the manpage.
 .\"
 .SH NAME
@@ -90,8 +90,9 @@ closing brackets, can end sentences.  The default value is "\fB"')>]}\fP".
 .B set casesensitive
 Do case-sensitive searches by default.
 .TP
-.B set const
+.B set constantshow
 Constantly display the cursor position in the status bar.
+(The old form of this option, '\fBset const\fR', is deprecated.)
 .TP
 .B set cut
 Use cut-to-end-of-line by default, instead of cutting the whole line.
@@ -158,8 +159,9 @@ subdirectories.  Also, the current directory is changed to here, so
 files are inserted from this directory.  By default, the operating
 directory feature is turned off.
 .TP
-.B set poslog
+.B set positionlog
 Save the cursor position of files between editing sessions.
+(The old form of this option, '\fBset poslog\fR', is deprecated.)
 .TP
 .B set preserve
 Preserve the XON and XOFF keys (^Q and ^S).
@@ -239,6 +241,11 @@ Specify the color combination to use for the titlebar.
 Valid color names for foreground and background are:
 .BR white , \ black , \ red , \ blue , \ green , \ yellow , \ magenta ", and " cyan .
 And either "\fIfgcolor\fR" or ",\fIbgcolor\fR" may be left out.
+.TP
+.B set unix
+Save a file by default in Unix format.  This overrides nano's
+default behavior of saving a file in the format that it had.
+(This option has no effect when you also use \fBset noconvert\fR.)
 .TP
 .B set view
 Disallow file modification.
@@ -336,7 +343,7 @@ to an already defined syntax -- useful when you want to
 slightly improve a syntax defined in one of the system-installed
 files (which are normally not writable)
 .SH REBINDING KEYS
-Key bindings may be reassigned via the following commands:
+Key bindings can be changed via the following two commands:
 .TP
 .BI bind " key function menu"
 Rebinds the key \fIkey\fP to a new function named \fIfunction\fP in the
@@ -365,7 +372,7 @@ Example: F10
 .RE
 
 .TP
-Valid \fIfunction\fP names to be bound include:
+Valid \fIfunction\fP names to be bound are:
 .RS 3
 .TP 2
 .B help
@@ -378,7 +385,10 @@ Cancels the current command.
 Exits from the program (or from the help viewer or the file browser).
 .TP
 .B writeout
-Writes the current buffer to disk.
+Writes the current buffer to disk, asking for a name.
+.TP
+.B savefile
+Writes the current file to disk without prompting or warning.
 .TP
 .B insert
 Inserts a file into the current buffer (at the current cursor position),
@@ -389,7 +399,13 @@ Searches for text in the current buffer -- or for filenames matching
 a string in the current list in the file browser.
 .TP
 .B searchagain
-Repeats the last search command.
+Repeats the last search command without prompting.
+.TP
+.B findprevious
+As \fBsearchagain\fR, but always in the backward direction.
+.TP
+.B findnext
+As \fBsearchagain\fR, but always in the forward direction.
 .TP
 .B replace
 Interactively replaces text within the current buffer.
@@ -406,6 +422,12 @@ current cursor position.
 .TP
 .B mark
 Sets the mark at the current position, to start selecting text.
+.TP
+.B cutwordleft
+Cuts from the cursor position to the beginning of the preceding word.
+.TP
+.B cutwordright
+Cuts from the cursor position to the beginning of the next word.
 .TP
 .B cutrestoffile
 Cuts all text from the cursor position till the end of the buffer.
@@ -453,11 +475,11 @@ Scrolls up one line of text from the current position.
 .B scrolldown
 Scrolls down one line of text from the current position.
 .TP
-.B nextword
-Moves the cursor to the beginning of the next word.
-.TP
 .B prevword
 Moves the cursor to the beginning of the previous word.
+.TP
+.B nextword
+Moves the cursor to the beginning of the next word.
 .TP
 .B home
 Moves the cursor to the beginning of the current line.

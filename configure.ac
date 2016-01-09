@@ -18,9 +18,9 @@
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301,
 # USA.
 #
-# $Id: configure.ac 5279 2015-07-05 07:59:50Z astyanax $
+# $Id: configure.ac 5484 2015-12-06 05:24:10Z astyanax $
 
-AC_INIT([GNU nano], [2.4.3], [nano-devel@gnu.org], [nano])
+AC_INIT([GNU nano], [2.5.0], [nano-devel@gnu.org], [nano])
 AC_CONFIG_SRCDIR([src/nano.c])
 AC_CANONICAL_HOST
 AM_INIT_AUTOMAKE
@@ -527,6 +527,7 @@ else
 fi
 
 AC_CHECK_LIB([$CURSES_LIB_NAME], use_default_colors, AC_DEFINE(HAVE_USE_DEFAULT_COLORS, 1, [Define this if your curses library has the use_default_colors() command.]))
+AC_CHECK_LIB([$CURSES_LIB_NAME], key_defined, AC_DEFINE(HAVE_KEY_DEFINED, 1, [Define this if your curses library has the key_defined() command.]))
 
 dnl Parse any configure options.
 
